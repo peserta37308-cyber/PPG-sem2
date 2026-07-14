@@ -888,6 +888,21 @@ async function getFileSrc(item){
   return null;
 }
 async function removeFileContent(item){
+  if(item.driveId && GOOGLE_DRIVE_ENABLED){
+    try{
+      await ensureDriveReady();
+      if(!driveAccessToken || (driveTokenExpiry && Date.now() > driveTokenExpiry - 60000)){
+        try{ await requestDriveToken(''); }catch(e){ await requestDriveToken('consent'); }
+      }
+      if(driveAccessToken){
+        await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.driveId)}`, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + driveAccessToken }
+        });
+      }
+    }catch(e){ console.warn('[removeFileContent] failed to delete Drive file', e); }
+    return;
+  }
   if(item.path && FIREBASE_ENABLED){ try{ await firebase.storage().ref(item.path).delete(); }catch(e){} return; }
   try{ await Storage.delete(`file-${item.id}`); }catch(e){}
   delete fileContentCache[item.id];
