@@ -33,10 +33,40 @@
   --radius: 18px; --radius-sm: 12px;
 }
 [data-theme="dark"]{
-  --bg:#0A1120; --card:#101B33; --border:#1E2C4C; --text:#E7ECFB; --text-dim:#93A2C4; --text-faint:#5E6C8C;
+  --bg:#0A1120; --card:#101A34; --border:#1F2C4E; --text:#E7ECFB; --text-dim:#93A2C4; --text-faint:#7282A4;
+  --primary:#60A5FA; --primary-dark:#2563EB; --primary-light:#93C5FD;
+  --grad: linear-gradient(135deg,#2563EB 0%,#4338CA 100%);
   --grad-soft: linear-gradient(135deg,rgba(37,99,235,.18),rgba(79,70,229,.18));
+  --sidebar-grad: linear-gradient(190deg,#081122 0%,#0D1C34 55%,#14264A 100%);
   --shadow-md: 0 4px 18px rgba(0,0,0,.35);
   --shadow-lg: 0 16px 40px rgba(0,0,0,.45);
+}
+[data-theme="red"]{
+  --bg:#FFF1F2; --card:#FFF4F5; --border:#FECACA; --text:#7F1D1D; --text-dim:#991B1B; --text-faint:#F87171;
+  --primary:#DC2626; --primary-dark:#B91C1C; --primary-light:#FCA5A5;
+  --grad: linear-gradient(135deg,#DC2626 0%,#9333EA 100%);
+  --grad-soft: linear-gradient(135deg,rgba(220,38,38,.12),rgba(156,28,36,.12));
+  --sidebar-grad: linear-gradient(190deg,#2C0B0B 0%,#4B1111 55%,#6B1616 100%);
+  --shadow-md: 0 4px 18px rgba(220,38,38,.12);
+  --shadow-lg: 0 16px 40px rgba(220,38,38,.18);
+}
+[data-theme="green"]{
+  --bg:#F0FDF4; --card:#ECFDF5; --border:#BBF7D0; --text:#064E3B; --text-dim:#166534; --text-faint:#34D399;
+  --primary:#16A34A; --primary-dark:#15803D; --primary-light:#86EFAC;
+  --grad: linear-gradient(135deg,#16A34A 0%,#047857 100%);
+  --grad-soft: linear-gradient(135deg,rgba(16,163,74,.14),rgba(5,150,105,.14));
+  --sidebar-grad: linear-gradient(190deg,#0B3A22 0%,#0F5A37 55%,#145C4B 100%);
+  --shadow-md: 0 4px 18px rgba(16,163,74,.12);
+  --shadow-lg: 0 16px 40px rgba(16,163,74,.18);
+}
+[data-theme="yellow"]{
+  --bg:#FFFBEB; --card:#FFFAF0; --border:#FDE68A; --text:#92400E; --text-dim:#B45309; --text-faint:#FCD34D;
+  --primary:#D97706; --primary-dark:#B45309; --primary-light:#FBBF24;
+  --grad: linear-gradient(135deg,#D97706 0%,#F59E0B 100%);
+  --grad-soft: linear-gradient(135deg,rgba(217,119,6,.14),rgba(245,158,11,.14));
+  --sidebar-grad: linear-gradient(190deg,#4B2C00 0%,#7C471A 55%,#A16207 100%);
+  --shadow-md: 0 4px 18px rgba(217,119,6,.12);
+  --shadow-lg: 0 16px 40px rgba(217,119,6,.16);
 }
 *{box-sizing:border-box; margin:0; padding:0;}
 body{font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); transition:background .35s ease,color .35s ease; overflow-x:hidden; min-height:100vh;}
@@ -1863,6 +1893,16 @@ function renderProfile(){
       <div class="form-field full"><label>Sekolah Tempat PPL</label><input id="pfSekolah" value="${p.sekolah}"></div>
       <div class="form-field"><label>Guru Pamong</label><input id="pfPamong" value="${p.pamong}"></div>
       <div class="form-field"><label>Dosen Pembimbing Lapangan</label><input id="pfDpl" value="${p.dpl}"></div>
+      <div class="form-field full">
+        <label>Warna Tema</label>
+        <div class="theme-picker">
+          <button type="button" class="theme-swatch ${state.theme==='light'?'active':''}" onclick="setTheme('light')" style="background:linear-gradient(135deg,#FFFFFF,#F1F5F9); color:#0F172A;">Terang</button>
+          <button type="button" class="theme-swatch ${state.theme==='dark'?'active':''}" onclick="setTheme('dark')" style="background:linear-gradient(135deg,#0F172A,#1E293B); color:#F8FAFC;">Gelap</button>
+          <button type="button" class="theme-swatch ${state.theme==='red'?'active':''}" onclick="setTheme('red')" style="background:linear-gradient(135deg,#DC2626,#9333EA); color:#FFF5F5;">Merah</button>
+          <button type="button" class="theme-swatch ${state.theme==='green'?'active':''}" onclick="setTheme('green')" style="background:linear-gradient(135deg,#16A34A,#047857); color:#F0FDF4;">Hijau</button>
+          <button type="button" class="theme-swatch ${state.theme==='yellow'?'active':''}" onclick="setTheme('yellow')" style="background:linear-gradient(135deg,#F59E0B,#D97706); color:#78350F;">Kuning</button>
+        </div>
+      </div>
     </div>
     <button class="btn btn-primary" onclick="saveProfile()"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
     ${currentUser? `<button class="btn btn-outline" style="margin-left:10px;" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar Akun</button>
@@ -1927,13 +1967,32 @@ document.addEventListener('click', (e)=>{
 });
 
 /* ===================== THEME ===================== */
+const THEME_LABELS = { light:'Terang', dark:'Gelap', red:'Merah', green:'Hijau', yellow:'Kuning' };
+const THEME_ORDER = ['light','dark','red','green','yellow'];
+function setTheme(theme){
+  if(!THEME_ORDER.includes(theme)) theme='light';
+  state.theme = theme;
+  applyTheme();
+  saveState();
+}
 function toggleTheme(){
-  state.theme = state.theme==='dark' ? 'light' : 'dark';
-  applyTheme(); saveState();
+  const current = THEME_ORDER.includes(state.theme) ? state.theme : 'light';
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+  setTheme(next);
 }
 function applyTheme(){
   document.documentElement.setAttribute('data-theme', state.theme);
-  document.getElementById('themeBtn').innerHTML = state.theme==='dark' ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+  const icon = state.theme==='dark'
+    ? 'fa-sun'
+    : state.theme==='red'
+      ? 'fa-fire'
+      : state.theme==='green'
+        ? 'fa-leaf'
+        : state.theme==='yellow'
+          ? 'fa-sun'
+          : 'fa-moon';
+  document.getElementById('themeBtn').innerHTML = `<i class="fa-solid ${icon}"></i>`;
+  document.getElementById('themeBtn').title = `Tema: ${THEME_LABELS[state.theme] || THEME_LABELS.light}`;
 }
 
 /* ===================== MAIN RENDER ===================== */
