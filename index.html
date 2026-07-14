@@ -440,6 +440,10 @@ const FIREBASE_CONFIG = {
   measurementId: "G-JH2726HSM3"
 };
 const FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('AIzaSyBTNDnLh0TMLnHavGzwCXhY-z84niYVsuM'));
+// Jika aplikasi sudah dideploy, pastikan menambahkan origin berikut
+// sebagai "Authorized JavaScript origin" di Google Cloud Console:
+//   https://ppg-beta.vercel.app
+// (Jangan lupa juga menambahkan redirect URI jika diperlukan.)
 const GOOGLE_DRIVE_CONFIG = {
   apiKey: "AIzaSyDScFXVzVN2uWyT78zYzoU_lq2UmioZB-U",
   clientId: "374154569168-6ceqncintplumnlr2bt31tjmsctujehe.apps.googleusercontent.com",
