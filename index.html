@@ -788,6 +788,45 @@ async function savePengumpulan(){
   }
   try{ await Storage.set('rombelb-pengumpulan', payload); }catch(e){ showToast('Gagal menyimpan data berkas','fa-triangle-exclamation','var(--danger)'); }
 }
+let realtimeSyncUnsubscribers = {};
+function unsubscribeRealtimeSync(){
+  Object.values(realtimeSyncUnsubscribers).forEach(fn=>{ try{ if(typeof fn==='function') fn(); }catch(e){} });
+  realtimeSyncUnsubscribers = {};
+}
+function applyRealtimeUpdate(name, payload){
+  if(!payload) return;
+  try{
+    const parsed = JSON.parse(payload);
+    let changed = false;
+    if(name==='state' && JSON.stringify(state) !== JSON.stringify(parsed)){
+      state = parsed; changed = true;
+    }
+    if(name==='docs' && JSON.stringify(docs) !== JSON.stringify(parsed)){
+      docs = parsed; changed = true;
+    }
+    if(name==='pengumpulan' && JSON.stringify(pengumpulan) !== JSON.stringify(parsed)){
+      pengumpulan = parsed; changed = true;
+    }
+    if(changed){
+      console.log('[realtimeSync] updated', name);
+      render();
+    }
+  }catch(e){ console.error('[realtimeSync] parse payload', name, e); }
+}
+function setupRealtimeSync(){
+  if(!FIREBASE_ENABLED || !currentUser) return;
+  unsubscribeRealtimeSync();
+  ['state','docs','pengumpulan'].forEach(name=>{
+    try{
+      const ref = cloudDataRef(name);
+      realtimeSyncUnsubscribers[name] = ref.onSnapshot((snap)=>{
+        if(snap.exists && snap.data().payload){
+          applyRealtimeUpdate(name, snap.data().payload);
+        }
+      }, (err)=>{ console.error('[realtimeSync] snapshot', name, err); });
+    }catch(e){ console.error('[realtimeSync] listen', name, e); }
+  });
+}
 let pengumpulan = null;
 function ensureMeetingSlot(no){
   if(!pengumpulan[no]) pengumpulan[no] = {modul:[], media:[], lkpd:[], penilaian:[], dokumentasi:[]};
@@ -1904,8 +1943,10 @@ async function init(){
         document.getElementById('authScreen').style.display = 'none';
         document.getElementById('logoutBtn').style.display = 'flex';
         document.getElementById('sideAccountStatus').textContent = user.email;
+        setupRealtimeSync();
         await bootApp();
       } else {
+        unsubscribeRealtimeSync();
         document.getElementById('loader').classList.add('hide');
         document.getElementById('authScreen').style.display = 'flex';
         document.getElementById('logoutBtn').style.display = 'none';
