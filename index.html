@@ -17,6 +17,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-auth-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-storage-compat.min.js"></script>
+<script src="https://apis.google.com/js/api.js"></script>
 <style>
 :root{
   --primary:#2563EB; --primary-dark:#1D4ED8; --primary-light:#60A5FA; --indigo:#4F46E5;
@@ -372,6 +373,7 @@ input,select,textarea{font-family:inherit;}
       <div style="flex:1; height:1px; background:var(--border);"></div>atau<div style="flex:1; height:1px; background:var(--border);"></div>
     </div>
     <button class="btn btn-outline" style="width:100%; justify-content:center;" onclick="loginWithGoogle()"><i class="fa-brands fa-google" style="color:#EA4335;"></i> Masuk dengan Google</button>
+    <button class="btn btn-outline" style="width:100%; justify-content:center; margin-top:10px;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</button>
     <div class="auth-skip">Tidak mau pakai akun dulu? <a onclick="skipAuth()">Lanjutkan offline di perangkat ini</a></div>
   </div>
 </div>
@@ -438,8 +440,69 @@ const FIREBASE_CONFIG = {
   measurementId: "G-JH2726HSM3"
 };
 const FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('AIzaSyBTNDnLh0TMLnHavGzwCXhY-z84niYVsuM'));
+const GOOGLE_DRIVE_CONFIG = {
+  apiKey: "AIzaSyDScFXVzVN2uWyT78zYzoU_lq2UmioZB-U",
+  clientId: "374154569168-6ceqncintplumnlr2bt31tjmsctujehe.apps.googleusercontent.com",
+  discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
+  scope: "https://www.googleapis.com/auth/drive.file"
+};
+const GOOGLE_DRIVE_ENABLED = !!(GOOGLE_DRIVE_CONFIG.clientId && !GOOGLE_DRIVE_CONFIG.clientId.startsWith('GAPI_'));
 let currentUser = null;
 let authMode = 'login';
+let gapiLoaded = false;
+let driveAuthInstance = null;
+let driveSignedIn = false;
+let driveAccessToken = null;
+
+async function initGoogleDrive(){
+  if(!GOOGLE_DRIVE_ENABLED) return;
+  if(gapiLoaded) return;
+  if(typeof gapi === 'undefined'){ console.warn('Google API client tidak tersedia.'); return; }
+  try{
+    await new Promise((resolve,reject)=>{
+      gapi.load('client:auth2', {callback: resolve, onerror: reject});
+    });
+    await gapi.client.init(GOOGLE_DRIVE_CONFIG);
+    driveAuthInstance = gapi.auth2.getAuthInstance();
+    driveSignedIn = driveAuthInstance.isSignedIn.get();
+    if(driveSignedIn){
+      driveAccessToken = driveAuthInstance.currentUser.get().getAuthResponse().access_token;
+    }
+    driveAuthInstance.isSignedIn.listen((status)=>{
+      driveSignedIn = status;
+      driveAccessToken = status ? driveAuthInstance.currentUser.get().getAuthResponse().access_token : null;
+    });
+    gapiLoaded = true;
+  }catch(e){
+    console.error('GDrive init error', e);
+  }
+}
+async function ensureDriveReady(){
+  if(!GOOGLE_DRIVE_ENABLED) return false;
+  if(!gapiLoaded) await initGoogleDrive();
+  return gapiLoaded;
+}
+async function signInDrive(){
+  try{
+    await ensureDriveReady();
+    if(!driveAuthInstance){ return showToast('Google Drive belum dikonfigurasi.','fa-triangle-exclamation','var(--danger)'); }
+    await driveAuthInstance.signIn();
+    driveSignedIn = true;
+    driveAccessToken = driveAuthInstance.currentUser.get().getAuthResponse().access_token;
+    showToast('Terhubung ke Google Drive','fa-cloud','var(--success)');
+  }catch(e){
+    console.error(e);
+    showToast('Gagal terhubung ke Google Drive','fa-triangle-exclamation','var(--danger)');
+  }
+}
+function signOutDrive(){
+  if(driveAuthInstance){
+    driveAuthInstance.signOut();
+    driveSignedIn = false;
+    driveAccessToken = null;
+    showToast('Logout Google Drive','fa-right-from-bracket','var(--primary)');
+  }
+}
 
 if(FIREBASE_ENABLED){
   try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){ console.error('Gagal inisialisasi Firebase', e); }
@@ -706,6 +769,27 @@ function pengumpulanTotalCount(){
    diakses dari perangkat manapun. Offline/tanpa akun -> berkas disimpan lokal di perangkat ini. */
 async function saveFileContent(itemId, file){
   const isImage = file.type.startsWith('image/');
+  if(GOOGLE_DRIVE_ENABLED){
+    await ensureDriveReady();
+    if(driveSignedIn && driveAccessToken){
+      const metadata = {name: itemId, mimeType: file.type||'application/octet-stream'};
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+      form.append('file', file);
+      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + driveAccessToken },
+        body: form
+      });
+      if(response.ok){
+        const data = await response.json();
+        const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
+        return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id};
+      }
+      console.error('Drive upload failed', await response.text());
+      throw new Error('Gagal upload ke Google Drive');
+    }
+  }
   if(FIREBASE_ENABLED && currentUser){
     const blob = isImage ? await compressImageToBlob(file) : file;
     const path = `users/${currentUser.uid}/files/${itemId}`;
@@ -1695,6 +1779,9 @@ async function bootApp(){
 }
 
 async function init(){
+  if(GOOGLE_DRIVE_ENABLED){
+    await initGoogleDrive();
+  }
   if(FIREBASE_ENABLED){
     firebase.auth().onAuthStateChanged(async (user)=>{
       currentUser = user;
