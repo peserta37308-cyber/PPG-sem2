@@ -762,23 +762,37 @@ async function saveFileContent(itemId, file){
   const isImage = file.type.startsWith('image/');
   if(GOOGLE_DRIVE_ENABLED){
     await ensureDriveReady();
-    if(driveSignedIn && driveAccessToken){
-      const metadata = {name: itemId, mimeType: file.type||'application/octet-stream'};
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
-      form.append('file', file);
-      const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + driveAccessToken },
-        body: form
-      });
-      if(response.ok){
-        const data = await response.json();
-        const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
-        return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id};
+    console.log('[saveFileContent] driveEnabled:', GOOGLE_DRIVE_ENABLED, 'signedIn:', driveSignedIn, 'hasToken:', !!driveAccessToken);
+    if(!driveSignedIn || !driveAccessToken){
+      showToast('Belum terhubung ke Google Drive. Klik "Hubungkan Google Drive".', 'fa-triangle-exclamation', 'var(--warning)');
+    } else {
+      try{
+        showToast('Mengunggah ke Google Drive...','fa-cloud-arrow-up','var(--primary)');
+        const metadata = {name: itemId, mimeType: file.type||'application/octet-stream'};
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+        form.append('file', file);
+        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + driveAccessToken },
+          body: form
+        });
+        const text = await response.text();
+        if(response.ok){
+          const data = JSON.parse(text || '{}');
+          const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
+          showToast('Berhasil diunggah ke Drive','fa-cloud-check','var(--success)');
+          console.log('[saveFileContent] drive upload success', data);
+          return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id};
+        }
+        console.error('[saveFileContent] Drive upload failed', response.status, text);
+        showToast('Gagal upload ke Drive: '+response.status,'fa-triangle-exclamation','var(--danger)');
+        throw new Error('GDrive upload failed: '+text);
+      }catch(e){
+        console.error('[saveFileContent] Drive upload error', e);
+        showToast('Terjadi kesalahan saat upload ke Drive','fa-triangle-exclamation','var(--danger)');
+        throw e;
       }
-      console.error('Drive upload failed', await response.text());
-      throw new Error('Gagal upload ke Google Drive');
     }
   }
   if(FIREBASE_ENABLED && currentUser){
