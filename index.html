@@ -458,8 +458,10 @@ let gapiLoaded = false;
 let driveAuthInstance = null;
 let driveSignedIn = false;
 let driveAccessToken = null;
+let driveTokenExpiry = null; // ms timestamp
 
 let tokenClient = null;
+let tokenResolve = null;
 async function initGoogleDrive(){
   if(!GOOGLE_DRIVE_ENABLED) return;
   if(tokenClient) return;
@@ -471,15 +473,46 @@ async function initGoogleDrive(){
       callback: (tokenResponse) => {
         if(tokenResponse && tokenResponse.access_token){
           driveAccessToken = tokenResponse.access_token;
+          // expires_in is seconds
+          driveTokenExpiry = tokenResponse.expires_in ? (Date.now() + (tokenResponse.expires_in*1000)) : (Date.now() + 3600*1000);
+          try{ localStorage.setItem('gdrive_token', driveAccessToken); localStorage.setItem('gdrive_token_expiry', String(driveTokenExpiry)); }catch(e){}
           driveSignedIn = true;
           showToast('Terhubung ke Google Drive','fa-cloud','var(--success)');
+          if(typeof tokenResolve === 'function'){ tokenResolve(tokenResponse); tokenResolve = null; }
         } else {
           driveAccessToken = null;
+          driveTokenExpiry = null;
           driveSignedIn = false;
+          if(typeof tokenResolve === 'function'){ tokenResolve(null); tokenResolve = null; }
         }
       }
     });
+    // try to restore token from storage (so user stays connected across reloads)
+    try{
+      const stored = localStorage.getItem('gdrive_token');
+      const storedExp = localStorage.getItem('gdrive_token_expiry');
+      if(stored && storedExp && Date.now() < Number(storedExp)){
+        driveAccessToken = stored;
+        driveTokenExpiry = Number(storedExp);
+        driveSignedIn = true;
+        console.log('[initGoogleDrive] restored token from localStorage, expires in', Math.round((driveTokenExpiry-Date.now())/1000),'s');
+      }
+    }catch(e){ }
   }catch(e){ console.error('GDrive init error', e); }
+}
+async function requestDriveToken(prompt){
+  if(!GOOGLE_DRIVE_ENABLED) throw new Error('Google Drive not enabled');
+  await ensureDriveReady();
+  if(!tokenClient) throw new Error('tokenClient not ready');
+  return new Promise((resolve, reject)=>{
+    tokenResolve = (tr)=>{
+      if(tr && tr.access_token) resolve(tr);
+      else reject(new Error('no-token'));
+    };
+    try{
+      if(prompt) tokenClient.requestAccessToken({prompt}); else tokenClient.requestAccessToken({prompt:''});
+    }catch(e){ tokenResolve = null; reject(e); }
+  });
 }
 async function ensureDriveReady(){
   if(!GOOGLE_DRIVE_ENABLED) return false;
@@ -762,9 +795,25 @@ async function saveFileContent(itemId, file){
   const isImage = file.type.startsWith('image/');
   if(GOOGLE_DRIVE_ENABLED){
     await ensureDriveReady();
-    console.log('[saveFileContent] driveEnabled:', GOOGLE_DRIVE_ENABLED, 'signedIn:', driveSignedIn, 'hasToken:', !!driveAccessToken);
+    console.log('[saveFileContent] driveEnabled:', GOOGLE_DRIVE_ENABLED, 'signedIn:', driveSignedIn, 'hasToken:', !!driveAccessToken, 'expiresIn:', driveTokenExpiry? Math.round((driveTokenExpiry-Date.now())/1000):null);
+    // ensure token is present and not near expiry
+    if(!driveSignedIn || !driveAccessToken || (driveTokenExpiry && Date.now() > driveTokenExpiry - 60000)){
+      // try silent refresh first
+      try{
+        await requestDriveToken('');
+        console.log('[saveFileContent] silent token obtained');
+      }catch(e){
+        console.log('[saveFileContent] silent token failed, will prompt user on consent');
+        try{
+          await requestDriveToken('consent');
+        }catch(e2){
+          showToast('Belum terhubung ke Google Drive. Klik "Hubungkan Google Drive".', 'fa-triangle-exclamation', 'var(--warning)');
+        }
+      }
+    }
     if(!driveSignedIn || !driveAccessToken){
-      showToast('Belum terhubung ke Google Drive. Klik "Hubungkan Google Drive".', 'fa-triangle-exclamation', 'var(--warning)');
+      // fall back to other storage handlers below
+      console.log('[saveFileContent] no drive token after attempts, skipping Drive branch');
     } else {
       try{
         showToast('Mengunggah ke Google Drive...','fa-cloud-arrow-up','var(--primary)');
@@ -772,22 +821,45 @@ async function saveFileContent(itemId, file){
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
         form.append('file', file);
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer ' + driveAccessToken },
-          body: form
-        });
-        const text = await response.text();
-        if(response.ok){
-          const data = JSON.parse(text || '{}');
-          const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
-          showToast('Berhasil diunggah ke Drive','fa-cloud-check','var(--success)');
-          console.log('[saveFileContent] drive upload success', data);
-          return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id};
-        }
-        console.error('[saveFileContent] Drive upload failed', response.status, text);
-        showToast('Gagal upload ke Drive: '+response.status,'fa-triangle-exclamation','var(--danger)');
-        throw new Error('GDrive upload failed: '+text);
+
+        const doUpload = async ()=>{
+          const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + driveAccessToken },
+            body: form
+          });
+          const text = await response.text();
+          if(response.ok){
+            const data = JSON.parse(text || '{}');
+            const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
+            showToast('Berhasil diunggah ke Drive','fa-cloud-check','var(--success)');
+            console.log('[saveFileContent] drive upload success', data);
+            return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id};
+          }
+          // handle 401 by trying to refresh once
+          if(response.status === 401){
+            console.warn('[saveFileContent] upload returned 401, trying token refresh and retry');
+            try{
+              await requestDriveToken(''); // try silent
+            }catch(e){
+              try{ await requestDriveToken('consent'); }catch(e2){ /* fallthrough */ }
+            }
+            // retry once
+            const r2 = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + driveAccessToken },
+              body: form
+            });
+            const text2 = await r2.text();
+            if(r2.ok){ const data = JSON.parse(text2||'{}'); const url = `https://drive.google.com/uc?export=download&id=${data.id}`; showToast('Berhasil diunggah ke Drive','fa-cloud-check','var(--success)'); return {mime:file.type||'application/octet-stream', sizeBytes:file.size, url, path:data.id, driveId:data.id}; }
+            console.error('[saveFileContent] Drive upload failed after retry', r2.status, text2);
+            throw new Error('GDrive upload failed after retry: '+text2);
+          }
+          console.error('[saveFileContent] Drive upload failed', response.status, text);
+          throw new Error('GDrive upload failed: '+text);
+        };
+
+        return await doUpload();
       }catch(e){
         console.error('[saveFileContent] Drive upload error', e);
         showToast('Terjadi kesalahan saat upload ke Drive','fa-triangle-exclamation','var(--danger)');
