@@ -18,6 +18,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-firestore-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.15.0/firebase-storage-compat.min.js"></script>
 <script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --primary:#2563EB; --primary-dark:#1D4ED8; --primary-light:#60A5FA; --indigo:#4F46E5;
@@ -458,55 +459,41 @@ let driveAuthInstance = null;
 let driveSignedIn = false;
 let driveAccessToken = null;
 
+let tokenClient = null;
 async function initGoogleDrive(){
   if(!GOOGLE_DRIVE_ENABLED) return;
-  if(gapiLoaded) return;
-  if(typeof gapi === 'undefined'){ console.warn('Google API client tidak tersedia.'); return; }
+  if(tokenClient) return;
+  if(typeof google === 'undefined'){ console.warn('Google Identity Services client tidak tersedia.'); return; }
   try{
-    await new Promise((resolve,reject)=>{
-      gapi.load('client:auth2', {callback: resolve, onerror: reject});
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_DRIVE_CONFIG.clientId,
+      scope: GOOGLE_DRIVE_CONFIG.scope,
+      callback: (tokenResponse) => {
+        if(tokenResponse && tokenResponse.access_token){
+          driveAccessToken = tokenResponse.access_token;
+          driveSignedIn = true;
+          showToast('Terhubung ke Google Drive','fa-cloud','var(--success)');
+        } else {
+          driveAccessToken = null;
+          driveSignedIn = false;
+        }
+      }
     });
-    await gapi.client.init(GOOGLE_DRIVE_CONFIG);
-    driveAuthInstance = gapi.auth2.getAuthInstance();
-    driveSignedIn = driveAuthInstance.isSignedIn.get();
-    if(driveSignedIn){
-      driveAccessToken = driveAuthInstance.currentUser.get().getAuthResponse().access_token;
-    }
-    driveAuthInstance.isSignedIn.listen((status)=>{
-      driveSignedIn = status;
-      driveAccessToken = status ? driveAuthInstance.currentUser.get().getAuthResponse().access_token : null;
-    });
-    gapiLoaded = true;
-  }catch(e){
-    console.error('GDrive init error', e);
-  }
+  }catch(e){ console.error('GDrive init error', e); }
 }
 async function ensureDriveReady(){
   if(!GOOGLE_DRIVE_ENABLED) return false;
-  if(!gapiLoaded) await initGoogleDrive();
-  return gapiLoaded;
+  if(!tokenClient) await initGoogleDrive();
+  return !!tokenClient;
 }
 async function signInDrive(){
   try{
     await ensureDriveReady();
-    if(!driveAuthInstance){ return showToast('Google Drive belum dikonfigurasi.','fa-triangle-exclamation','var(--danger)'); }
-    await driveAuthInstance.signIn();
-    driveSignedIn = true;
-    driveAccessToken = driveAuthInstance.currentUser.get().getAuthResponse().access_token;
-    showToast('Terhubung ke Google Drive','fa-cloud','var(--success)');
-  }catch(e){
-    console.error(e);
-    showToast('Gagal terhubung ke Google Drive','fa-triangle-exclamation','var(--danger)');
-  }
+    if(!tokenClient) return showToast('Google Drive belum dikonfigurasi.','fa-triangle-exclamation','var(--danger)');
+    tokenClient.requestAccessToken({prompt:'consent'});
+  }catch(e){ console.error(e); showToast('Gagal terhubung ke Google Drive','fa-triangle-exclamation','var(--danger)'); }
 }
-function signOutDrive(){
-  if(driveAuthInstance){
-    driveAuthInstance.signOut();
-    driveSignedIn = false;
-    driveAccessToken = null;
-    showToast('Logout Google Drive','fa-right-from-bracket','var(--primary)');
-  }
-}
+function signOutDrive(){ driveAccessToken=null; driveSignedIn=false; showToast('Logout Google Drive','fa-right-from-bracket','var(--primary)'); }
 
 if(FIREBASE_ENABLED){
   try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){ console.error('Gagal inisialisasi Firebase', e); }
