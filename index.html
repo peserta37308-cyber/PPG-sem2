@@ -1765,7 +1765,8 @@ function renderProfile(){
       <div class="form-field"><label>Dosen Pembimbing Lapangan</label><input id="pfDpl" value="${p.dpl}"></div>
     </div>
     <button class="btn btn-primary" onclick="saveProfile()"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
-    ${currentUser? `<button class="btn btn-outline" style="margin-left:10px;" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar Akun</button>` : ''}
+    ${currentUser? `<button class="btn btn-outline" style="margin-left:10px;" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar Akun</button>
+      ${GOOGLE_DRIVE_ENABLED? `<button class="btn btn-outline" style="margin-left:10px;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</button>` : ''}` : ''}
   </div>
   <div class="footer-elegant">Rombel B Tracker · Created by <b>@renaldiyoga</b></div>
   `;
