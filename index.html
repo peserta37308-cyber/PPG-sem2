@@ -392,6 +392,7 @@ input,select,textarea{font-family:inherit;}
         <div><b id="sideName">Yoga Gus Renaldi</b><small id="sideAccountStatus">Lihat profil</small></div>
       </div>
       <div class="nav-item" id="logoutBtn" style="display:none; color:#F8A9A9;" onclick="doLogout()"><i class="fa-solid fa-right-from-bracket"></i> Keluar Akun</div>
+      <div class="nav-item" id="driveConnectBtn" style="display:none; margin-top:8px; color:#93C5FD;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</div>
     </div>
   </aside>
 
@@ -1088,6 +1089,17 @@ function renderSidebar(){
   document.getElementById('navMain').innerHTML = html;
   document.getElementById('sideName').textContent = state.profile.nama;
   document.getElementById('avatarMini').textContent = initials(state.profile.nama);
+  // Update Drive connect button visibility/status
+  try{
+    const dbtn = document.getElementById('driveConnectBtn');
+    if(dbtn){
+      if(typeof GOOGLE_DRIVE_ENABLED !== 'undefined' && GOOGLE_DRIVE_ENABLED){
+        dbtn.style.display = 'block';
+        dbtn.innerHTML = driveSignedIn ? `<i class="fa-solid fa-cloud" style="color:#10B981"></i> Google Drive (Terhubung)`
+                                        : `<i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive`;
+      } else { dbtn.style.display = 'none'; }
+    }
+  }catch(e){}
 }
 
 /* ===================== DASHBOARD ===================== */
