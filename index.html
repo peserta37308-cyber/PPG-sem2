@@ -818,7 +818,7 @@ async function saveFileContent(itemId, file){
     } else {
       try{
         showToast('Mengunggah ke Google Drive...','fa-cloud-arrow-up','var(--primary)');
-        const metadata = {name: itemId, mimeType: file.type||'application/octet-stream'};
+        const metadata = {name: file.name || itemId, mimeType: file.type||'application/octet-stream'};
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
         form.append('file', file);
