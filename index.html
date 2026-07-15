@@ -751,7 +751,7 @@ function defaultState(){
     tasks: [],
     kegiatan,
     profile:{ nama:'Yoga Gus Renaldi', npm:'250952650', prodi:'PGSD - PPG Prajabatan', kelas:'Rombel B',
-      sekolah:'SD Swasta Santo Thomas 4 Medan', pamong:'Martogiana Sinaga, S.E.', dpl:'Dr. Eka Kartika Silalahi, S.Si., M.Pd.' },
+      sekolah:'SD Swasta Santo Thomas 4 Medan', pamong:'Martogiana Sinaga, S.E.', dpl:'Dr. Eka Kartika Silalahi, S.Si., M.Pd.', photo:null },
     notifDismissed: []
   };
 }
@@ -1206,7 +1206,16 @@ function renderSidebar(){
   html += `<div class="nav-item ${ui.view==='profile'?'active':''}" onclick="go('profile')"><i class="fa-solid fa-user"></i> Profil</div>`;
   document.getElementById('navMain').innerHTML = html;
   document.getElementById('sideName').textContent = state.profile.nama;
-  document.getElementById('avatarMini').textContent = initials(state.profile.nama);
+  const avatarMini = document.getElementById('avatarMini');
+  if(state.profile.photo){
+    avatarMini.style.backgroundImage = `url('${state.profile.photo}')`;
+    avatarMini.style.backgroundSize = 'cover';
+    avatarMini.style.backgroundPosition = 'center';
+    avatarMini.textContent = '';
+  } else {
+    avatarMini.style.backgroundImage = '';
+    avatarMini.textContent = initials(state.profile.nama);
+  }
   // Update Drive connect button visibility/status
   try{
     const dbtn = document.getElementById('driveConnectBtn');
@@ -1877,15 +1886,26 @@ function renderProfile(){
     : (FIREBASE_ENABLED
       ? `<div class="auth-offline-note"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>Kamu belum masuk akun — data hanya tersimpan di perangkat ini. <a style="cursor:pointer; font-weight:700;" onclick="location.reload()">Masuk sekarang</a></div>`
       : `<div class="auth-offline-note"><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Mode offline — data hanya tersimpan di perangkat ini. Login lintas-perangkat belum dikonfigurasi.</div>`);
+  const avatarStyle = p.photo ? `background-image:url('${p.photo}'); background-size:cover; background-position:center;` : '';
+  const avatarLabel = p.photo ? '' : initials(p.nama);
   let html = `
   <div class="page-head"><div><h1>Profil Pengguna</h1><p>Data ini digunakan untuk mempersonalisasi tampilan dashboard kamu.</p></div></div>
   <div class="profile-card">
     ${accountBox}
     <div class="profile-avatar-row">
-      <div class="avatar-big">${initials(p.nama)}</div>
+      <div class="avatar-big" style="${avatarStyle}">${avatarLabel}</div>
       <div><h3 style="font-size:16px;">${p.nama}</h3><p style="color:var(--text-dim); font-size:12.5px; margin-top:3px;">${p.prodi}</p></div>
     </div>
     <div class="form-grid">
+      <div class="form-field full">
+        <label>Foto Profil</label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline" style="padding:10px 14px;" onclick="document.getElementById('profilePhotoInput').click()"><i class="fa-solid fa-camera"></i> Pilih Foto</button>
+          ${p.photo ? `<button type="button" class="btn btn-danger-outline" style="padding:10px 14px;" onclick="removeProfilePhoto()"><i class="fa-solid fa-trash"></i> Hapus Foto</button>` : ''}
+          <span style="color:var(--text-dim); font-size:12px;">Maks 2MB. Format JPG/PNG.</span>
+        </div>
+        <input type="file" id="profilePhotoInput" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(event)">
+      </div>
       <div class="form-field"><label>Nama Lengkap</label><input id="pfNama" value="${p.nama}"></div>
       <div class="form-field"><label>NPM</label><input id="pfNpm" value="${p.npm}"></div>
       <div class="form-field"><label>Program Studi</label><input id="pfProdi" value="${p.prodi}"></div>
@@ -1921,8 +1941,31 @@ function saveProfile(){
     sekolah: document.getElementById('pfSekolah').value,
     pamong: document.getElementById('pfPamong').value,
     dpl: document.getElementById('pfDpl').value,
+    photo: state.profile.photo || null,
   };
   saveState(); renderSidebar(); showToast('Profil berhasil disimpan');
+}
+
+function handleProfilePhotoUpload(evt){
+  const file = evt.target.files?.[0];
+  if(!file) return;
+  if(file.size > 2_000_000){
+    showToast('Ukuran foto terlalu besar. Gunakan kurang dari 2MB','fa-triangle-exclamation','var(--danger)');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    state.profile.photo = reader.result;
+    renderProfile();
+    showToast('Foto profil siap disimpan','fa-circle-check','var(--success)');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeProfilePhoto(){
+  state.profile.photo = null;
+  renderProfile();
+  showToast('Foto profil dihapus','fa-trash','var(--warning)');
 }
 
 /* ===================== NOTIFICATIONS ===================== */
