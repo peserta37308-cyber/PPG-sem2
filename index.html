@@ -415,7 +415,7 @@ input,select,textarea{font-family:inherit;}
     </div>
     <button class="btn btn-outline" style="width:100%; justify-content:center;" onclick="loginWithGoogle()"><i class="fa-brands fa-google" style="color:#EA4335;"></i> Masuk dengan Google</button>
     <button class="btn btn-outline" style="width:100%; justify-content:center; margin-top:10px;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</button>
-    <div class="auth-skip">Tidak mau pakai akun dulu? <a onclick="skipAuth()">Lanjutkan offline di perangkat ini</a></div>
+    <div class="auth-skip">Untuk menyimpan data ke perangkat lain, silakan masuk atau daftar akun terlebih dahulu.</div>
   </div>
 </div>
 
@@ -626,8 +626,8 @@ async function loginWithGoogle(){
   }
 }
 function skipAuth(){
-  document.getElementById('authScreen').style.display = 'none';
-  bootApp();
+  showToast('Login diperlukan untuk menyinkronkan data ke perangkat lain','fa-cloud-arrow-up','var(--primary)');
+  document.getElementById('authScreen').style.display = 'flex';
 }
 async function doLogout(){
   if(FIREBASE_ENABLED && currentUser){
@@ -1885,7 +1885,7 @@ function renderProfile(){
     ? `<div class="auth-offline-note" style="background:rgba(16,185,129,.12); color:var(--success); margin-bottom:18px;"><i class="fa-solid fa-cloud" style="margin-right:6px;"></i>Masuk sebagai <b>${currentUser.email}</b> — data & berkas tersinkron otomatis, bisa diakses dari perangkat lain.</div>`
     : (FIREBASE_ENABLED
       ? `<div class="auth-offline-note"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>Kamu belum masuk akun — data hanya tersimpan di perangkat ini. <a style="cursor:pointer; font-weight:700;" onclick="location.reload()">Masuk sekarang</a></div>`
-      : `<div class="auth-offline-note"><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Mode offline — data hanya tersimpan di perangkat ini. Login lintas-perangkat belum dikonfigurasi.</div>`);
+      : `<div class="auth-offline-note"><i class="fa-solid fa-circle-info" style="margin-right:6px;"></i>Silakan masuk untuk menyinkronkan data di semua perangkat. Tanpa login, data hanya tersimpan di perangkat ini.</div>`);
   const avatarStyle = p.photo ? `background-image:url('${p.photo}'); background-size:cover; background-position:center;` : '';
   const avatarLabel = p.photo ? '' : initials(p.nama);
   let html = `
