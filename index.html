@@ -500,13 +500,14 @@ let driveAuthInstance = null;
 let driveSignedIn = false;
 let driveAccessToken = null;
 let driveTokenExpiry = null; // ms timestamp
+let driveInitError = null;
 
 let tokenClient = null;
 let tokenResolve = null;
 async function initGoogleDrive(){
   if(!GOOGLE_DRIVE_ENABLED) return;
   if(tokenClient) return;
-  if(typeof google === 'undefined'){ console.warn('Google Identity Services client tidak tersedia.'); return; }
+  if(typeof google === 'undefined'){ console.warn('Google Identity Services client tidak tersedia.'); showToast('Google Identity client tidak tersedia. Buka aplikasi lewat server (http/https), bukan file://','fa-triangle-exclamation','var(--danger)'); driveInitError = 'Google Identity client tidak ditemukan'; return; }
   try{
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_DRIVE_CONFIG.clientId,
@@ -539,6 +540,7 @@ async function initGoogleDrive(){
         console.log('[initGoogleDrive] restored token from localStorage, expires in', Math.round((driveTokenExpiry-Date.now())/1000),'s');
       }
     }catch(e){ }
+    driveInitError = null;
   }catch(e){ console.error('GDrive init error', e); }
 }
 async function requestDriveToken(prompt){
@@ -564,7 +566,13 @@ async function signInDrive(){
   try{
     await ensureDriveReady();
     if(!tokenClient) return showToast('Google Drive belum dikonfigurasi.','fa-triangle-exclamation','var(--danger)');
-    tokenClient.requestAccessToken({prompt:'consent'});
+    try{
+      tokenClient.requestAccessToken({prompt:'consent'});
+    }catch(err){
+      console.error('[signInDrive] requestAccessToken failed', err);
+      driveInitError = err && err.message ? err.message : String(err);
+      showToast('Gagal meminta akses Google Drive: '+(err && err.message?err.message:'unknown'),'fa-triangle-exclamation','var(--danger)');
+    }
   }catch(e){ console.error(e); showToast('Gagal terhubung ke Google Drive','fa-triangle-exclamation','var(--danger)'); }
 }
 function signOutDrive(){ driveAccessToken=null; driveSignedIn=false; showToast('Logout Google Drive','fa-right-from-bracket','var(--primary)'); }
@@ -1222,8 +1230,10 @@ function renderSidebar(){
     if(dbtn){
       if(typeof GOOGLE_DRIVE_ENABLED !== 'undefined' && GOOGLE_DRIVE_ENABLED){
         dbtn.style.display = 'block';
-        dbtn.innerHTML = driveSignedIn ? `<i class="fa-solid fa-cloud" style="color:#10B981"></i> Google Drive (Terhubung)`
-                                        : `<i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive`;
+          dbtn.innerHTML = driveSignedIn ? `<i class="fa-solid fa-cloud" style="color:#10B981"></i> Google Drive (Terhubung)`
+                                          : `<i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive`;
+          if(driveInitError){ dbtn.title = 'Masalah Drive: '+driveInitError + ' — periksa konsol dan pengaturan Google Cloud Console.'; }
+          else { dbtn.title = driveSignedIn ? 'Drive terhubung' : 'Hubungkan Google Drive untuk menyimpan berkas'; }
       } else { dbtn.style.display = 'none'; }
     }
   }catch(e){}
