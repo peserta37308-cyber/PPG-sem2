@@ -786,7 +786,7 @@ function defaultState(){
     meetingsDone: {},
     tasks: [],
     kegiatan,
-    profile:{ nama:'Yoga Gus Renaldi', npm:'250952650', prodi:'PGSD - PPG Prajabatan', kelas:'Rombel B',
+    profile:{ profileSetupCompleted:false, nama:'Yoga Gus Renaldi', npm:'250952650', prodi:'PGSD - PPG Prajabatan', kelas:'Rombel B',
       sekolah:'SD Swasta Santo Thomas 4 Medan', pamong:'Martogiana Sinaga, S.E.', dpl:'Dr. Eka Kartika Silalahi, S.Si., M.Pd.', photo:null },
     notifDismissed: []
   };
@@ -1256,13 +1256,20 @@ function showToast(msg, icon='fa-circle-check', color='var(--success)'){
   setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateX(20px)'; el.style.transition='all .3s'; setTimeout(()=>el.remove(),300); }, 2600);
 }
 function openModal(html, wide=false){
+  const overlay = document.getElementById('modalOverlay');
   const box = document.getElementById('modalBox');
+  overlay.removeAttribute('data-locked');
   box.className = 'modal-box' + (wide?' wide':'');
   box.innerHTML = html;
-  document.getElementById('modalOverlay').classList.add('show');
+  overlay.classList.add('show');
 }
-function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
-document.getElementById('modalOverlay').addEventListener('click', e=>{ if(e.target.id==='modalOverlay') closeModal(); });
+function closeModal(){
+  const overlay = document.getElementById('modalOverlay');
+  if(overlay.dataset.locked === 'true') return;
+  overlay.classList.remove('show');
+  overlay.removeAttribute('data-locked');
+}
+document.getElementById('modalOverlay').addEventListener('click', e=>{ if(e.target.id==='modalOverlay' && document.getElementById('modalOverlay').dataset.locked !== 'true') closeModal(); });
 
 /* ===================== ROUTING / NAV ===================== */
 function openSidebar(){
@@ -1980,6 +1987,55 @@ function renderStats(){
 }
 
 /* ===================== PROFILE ===================== */
+function isFirstLoginUser(user){
+  if(!user || !user.metadata) return false;
+  const created = user.metadata.creationTime;
+  const lastSignIn = user.metadata.lastSignInTime;
+  return !!(created && lastSignIn && created === lastSignIn);
+}
+function showProfileSetupModal(){
+  const p = state.profile || {};
+  const overlay = document.getElementById('modalOverlay');
+  overlay.dataset.locked = 'true';
+  openModal(`
+    <h3>Lengkapi Profil Akun</h3>
+    <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:14px; line-height:1.6;">Akun baru Anda sudah siap. Silakan isi data profil terlebih dahulu agar identitas Anda muncul di dashboard dan sinkronisasi lebih rapi.</p>
+    <div class="form-grid">
+      <div class="form-field full"><label>Nama Lengkap</label><input id="psNama" value="${p.nama || ''}"></div>
+      <div class="form-field"><label>NPM</label><input id="psNpm" value="${p.npm || ''}"></div>
+      <div class="form-field"><label>Program Studi</label><input id="psProdi" value="${p.prodi || ''}"></div>
+      <div class="form-field"><label>Kelas / Rombel</label><input id="psKelas" value="${p.kelas || ''}"></div>
+      <div class="form-field full"><label>Sekolah Tempat PPL</label><input id="psSekolah" value="${p.sekolah || ''}"></div>
+      <div class="form-field"><label>Guru Pamong</label><input id="psPamong" value="${p.pamong || ''}"></div>
+      <div class="form-field"><label>Dosen Pembimbing Lapangan</label><input id="psDpl" value="${p.dpl || ''}"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="submitProfileSetup()"><i class="fa-solid fa-floppy-disk"></i> Simpan Profil</button>
+    </div>
+  `);
+}
+function submitProfileSetup(){
+  const nama = document.getElementById('psNama').value.trim();
+  if(!nama){ showToast('Nama lengkap wajib diisi','fa-triangle-exclamation','var(--danger)'); return; }
+  state.profile = {
+    ...state.profile,
+    profileSetupCompleted: true,
+    nama,
+    npm: document.getElementById('psNpm').value.trim(),
+    prodi: document.getElementById('psProdi').value.trim(),
+    kelas: document.getElementById('psKelas').value.trim(),
+    sekolah: document.getElementById('psSekolah').value.trim(),
+    pamong: document.getElementById('psPamong').value.trim(),
+    dpl: document.getElementById('psDpl').value.trim(),
+    photo: state.profile.photo || null,
+  };
+  saveState();
+  document.getElementById('modalOverlay').removeAttribute('data-locked');
+  closeModal();
+  renderSidebar();
+  render();
+  showToast('Profil akun berhasil disimpan','fa-circle-check','var(--success)');
+}
 function renderProfile(){
   const p = state.profile;
   const accountBox = currentUser
@@ -2032,6 +2088,8 @@ function renderProfile(){
 }
 function saveProfile(){
   state.profile = {
+    ...state.profile,
+    profileSetupCompleted: true,
     nama: document.getElementById('pfNama').value || state.profile.nama,
     npm: document.getElementById('pfNpm').value,
     prodi: document.getElementById('pfProdi').value,
@@ -2145,6 +2203,9 @@ async function bootApp(){
   pengumpulan = await loadPengumpulan();
   applyTheme();
   render();
+  if(currentUser && isFirstLoginUser(currentUser) && state.profile.profileSetupCompleted !== true){
+    setTimeout(()=>{ showProfileSetupModal(); }, 300);
+  }
   setTimeout(()=>{ document.getElementById('loader').classList.add('hide'); }, 500);
 }
 
