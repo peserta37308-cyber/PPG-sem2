@@ -587,7 +587,6 @@ if(FIREBASE_ENABLED){
     firebase.initializeApp(FIREBASE_CONFIG);
     firebaseAuth = firebase.auth();
     window.firebaseAuth = firebaseAuth;
-    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
   }catch(e){ console.error('Gagal inisialisasi Firebase', e); }
 }
 
@@ -614,15 +613,16 @@ async function submitAuth(){
   btn.innerHTML = '<i class="fa-solid fa-spinner uploading-spin"></i> Memproses...';
   btn.disabled = true;
   try{
-    if(!firebaseAuth){ throw new Error('Firebase belum siap'); }
-    await firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    if(!firebaseAuth || !firebaseAuth.signInWithEmailAndPassword){
+      throw new Error('Firebase auth belum siap');
+    }
     if(authMode==='login'){
       await firebaseAuth.signInWithEmailAndPassword(email, password);
     } else {
       await firebaseAuth.createUserWithEmailAndPassword(email, password);
     }
-    // onAuthStateChanged akan menangani lanjutan (menutup layar login & memuat data)
   }catch(e){
+    console.error('[submitAuth] login failed', e);
     showAuthError(translateAuthError(e));
     switchAuthTab(authMode);
   } finally {
@@ -633,15 +633,20 @@ async function submitAuth(){
   }
 }
 function translateAuthError(e){
-  const code = e && e.code || '';
+  const code = (e && (e.code || e.message || '')) || '';
   if(code.includes('email-already-in-use')) return 'Email ini sudah terdaftar. Coba menu Masuk.';
   if(code.includes('invalid-email')) return 'Format email tidak valid.';
-  if(code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential')) return 'Email atau kata sandi salah.';
+  if(code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential') || code.includes('invalid-login-credentials')) return 'Email atau kata sandi salah.';
   if(code.includes('weak-password')) return 'Kata sandi terlalu lemah (minimal 6 karakter).';
   if(code.includes('network-request-failed')) return 'Tidak ada koneksi internet.';
   if(code.includes('popup-blocked')) return 'Popup diblokir browser. Izinkan popup untuk masuk dengan Google.';
   if(code.includes('account-exists-with-different-credential')) return 'Email ini sudah terdaftar dengan cara masuk yang berbeda.';
-  return 'Terjadi kesalahan. Coba lagi.';
+  if(code.includes('operation-not-allowed')) return 'Metode email/password belum diaktifkan di Firebase Console.';
+  if(code.includes('too-many-requests')) return 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.';
+  if(code.includes('user-disabled')) return 'Akun ini diblokir.';
+  if(code.includes('auth/')) return `Login gagal: ${code.replace('auth/','')}`;
+  if(e && e.message) return `Login gagal: ${e.message}`;
+  return 'Terjadi kesalahan saat login. Coba lagi.';
 }
 async function loginWithGoogle(){
   if(window.location.protocol === 'file:'){ showAuthError('Buka aplikasi lewat localhost/HTTPS agar login Google bisa berjalan dengan baik.'); return; }
