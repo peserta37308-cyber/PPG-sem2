@@ -760,6 +760,7 @@ const Storage = {
 let state = null;
 let ui = {view:'dashboard', courseId:null, tab:'checklist', search:'', filter:'all', calMonth:6, calYear:2026, calSelected:null, expandedMeetings:{}, expandedTasks:{}};
 let fileContentCache = {}; // itemId -> full dataURL (in-memory cache; source of truth is Storage)
+let cloudSyncWarningShown = false;
 
 function defaultState(){
   const meetingsDone = {}; const kegiatan = {};
@@ -776,7 +777,36 @@ function defaultState(){
 }
 
 function cloudDataRef(name){
-  return firebase.firestore().collection('users').doc(currentUser.uid).collection('data').doc(name);
+  try{
+    if(!FIREBASE_ENABLED || !currentUser || !firebase || !firebase.firestore){ return null; }
+    return firebase.firestore().collection('users').doc(currentUser.uid).collection('data').doc(name);
+  }catch(e){
+    console.error('[cloudDataRef] failed', e);
+    return null;
+  }
+}
+function showCloudSyncWarning(err, fallbackLabel){
+  if(cloudSyncWarningShown) return;
+  cloudSyncWarningShown = true;
+  const message = err && err.code === 'permission-denied'
+    ? 'Sinkronisasi cloud ditolak oleh aturan Firestore. Periksa rules Firebase agar data bisa tersimpan ke cloud.'
+    : (err && (err.message || '').includes('not found') || err && (err.message || '').includes('database'))
+      ? 'Firestore belum aktif untuk project ini. Buat database Firestore terlebih dahulu agar sinkronisasi cloud berjalan.'
+      : `${fallbackLabel || 'Sinkronisasi cloud gagal.'} Data tetap tersimpan di perangkat ini.`;
+  showToast(message, 'fa-triangle-exclamation', 'var(--warning)');
+}
+async function persistCloudDocument(name, payload){
+  if(!FIREBASE_ENABLED || !currentUser) return false;
+  try{
+    const ref = cloudDataRef(name);
+    if(!ref) throw new Error('Firestore belum siap');
+    await ref.set({payload});
+    return true;
+  }catch(err){
+    console.error(`[persistCloudDocument:${name}]`, err);
+    showCloudSyncWarning(err, 'Sinkronisasi cloud gagal.');
+    return false;
+  }
 }
 async function loadState(){
   if(FIREBASE_ENABLED && currentUser){
@@ -791,11 +821,10 @@ async function loadState(){
 }
 async function saveState(){
   const payload = JSON.stringify(state);
+  try{ await Storage.set('rombelb-state', payload); }catch(e){ console.error(e); showToast('Gagal menyimpan data lokal','fa-triangle-exclamation','var(--danger)'); }
   if(FIREBASE_ENABLED && currentUser){
-    try{ await cloudDataRef('state').set({payload}); }catch(e){ showToast('Gagal sinkron ke cloud','fa-triangle-exclamation','var(--danger)'); }
-    return;
+    await persistCloudDocument('state', payload);
   }
-  try{ await Storage.set('rombelb-state', payload); }catch(e){ console.error(e); showToast('Gagal menyimpan data','fa-triangle-exclamation','var(--danger)'); }
 }
 async function loadDocs(){
   if(FIREBASE_ENABLED && currentUser){
@@ -810,11 +839,10 @@ async function loadDocs(){
 }
 async function saveDocs(){
   const payload = JSON.stringify(docs);
-  if(FIREBASE_ENABLED && currentUser){
-    try{ await cloudDataRef('docs').set({payload}); }catch(e){ showToast('Gagal sinkron dokumentasi','fa-triangle-exclamation','var(--danger)'); }
-    return;
-  }
   try{ await Storage.set('rombelb-docs', payload); }catch(e){ showToast('Gagal menyimpan data dokumentasi','fa-triangle-exclamation','var(--danger)'); }
+  if(FIREBASE_ENABLED && currentUser){
+    await persistCloudDocument('docs', payload);
+  }
 }
 let docs = null;
 
@@ -831,18 +859,13 @@ async function loadPengumpulan(){
 }
 async function savePengumpulan(){
   const payload = JSON.stringify(pengumpulan);
-  if(FIREBASE_ENABLED && currentUser){
-    try{
-      console.log('[savePengumpulan] saving to cloud', {uid: currentUser.uid});
-      await cloudDataRef('pengumpulan').set({payload});
-      return;
-    }catch(e){ showToast('Gagal sinkron berkas','fa-triangle-exclamation','var(--danger)'); console.error('[savePengumpulan] cloud save failed', e); return; }
-  }
   try{
-    console.log('[savePengumpulan] saving local only (not logged in)', {FIREBASE_ENABLED, currentUser});
     await Storage.set('rombelb-pengumpulan', payload);
     if(FIREBASE_ENABLED && !currentUser) showToast('Login untuk menyinkronkan berkas ke perangkat lain. Saat ini hanya tersimpan lokal.','fa-cloud-arrow-up','var(--warning)');
   }catch(e){ showToast('Gagal menyimpan data berkas','fa-triangle-exclamation','var(--danger)'); console.error('[savePengumpulan] local save failed', e); }
+  if(FIREBASE_ENABLED && currentUser){
+    await persistCloudDocument('pengumpulan', payload);
+  }
 }
 let realtimeSyncUnsubscribers = {};
 let realtimeSyncPollInterval = null;
