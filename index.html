@@ -581,8 +581,14 @@ async function signInDrive(){
 }
 function signOutDrive(){ driveAccessToken=null; driveSignedIn=false; showToast('Logout Google Drive','fa-right-from-bracket','var(--primary)'); }
 
+let firebaseAuth = null;
 if(FIREBASE_ENABLED){
-  try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){ console.error('Gagal inisialisasi Firebase', e); }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    firebaseAuth = firebase.auth();
+    window.firebaseAuth = firebaseAuth;
+    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+  }catch(e){ console.error('Gagal inisialisasi Firebase', e); }
 }
 
 function switchAuthTab(mode){
@@ -603,18 +609,27 @@ async function submitAuth(){
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ showAuthError('Isi email dan kata sandi terlebih dahulu.'); return; }
   if(password.length < 6){ showAuthError('Kata sandi minimal 6 karakter.'); return; }
+  if(window.location.protocol === 'file:'){ showAuthError('Buka aplikasi lewat localhost/HTTPS agar login akun bisa berjalan dengan baik.'); return; }
   const btn = document.getElementById('authSubmitBtn');
   btn.innerHTML = '<i class="fa-solid fa-spinner uploading-spin"></i> Memproses...';
+  btn.disabled = true;
   try{
+    if(!firebaseAuth){ throw new Error('Firebase belum siap'); }
+    await firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     if(authMode==='login'){
-      await firebase.auth().signInWithEmailAndPassword(email, password);
+      await firebaseAuth.signInWithEmailAndPassword(email, password);
     } else {
-      await firebase.auth().createUserWithEmailAndPassword(email, password);
+      await firebaseAuth.createUserWithEmailAndPassword(email, password);
     }
     // onAuthStateChanged akan menangani lanjutan (menutup layar login & memuat data)
   }catch(e){
     showAuthError(translateAuthError(e));
     switchAuthTab(authMode);
+  } finally {
+    btn.disabled = false;
+    if(document.getElementById('authScreen').style.display !== 'flex'){
+      btn.innerHTML = authMode==='login' ? '<i class="fa-solid fa-right-to-bracket"></i> Masuk' : '<i class="fa-solid fa-user-plus"></i> Daftar Akun';
+    }
   }
 }
 function translateAuthError(e){
@@ -629,9 +644,10 @@ function translateAuthError(e){
   return 'Terjadi kesalahan. Coba lagi.';
 }
 async function loginWithGoogle(){
+  if(window.location.protocol === 'file:'){ showAuthError('Buka aplikasi lewat localhost/HTTPS agar login Google bisa berjalan dengan baik.'); return; }
   try{
     const provider = new firebase.auth.GoogleAuthProvider();
-    await firebase.auth().signInWithPopup(provider);
+    await firebaseAuth.signInWithPopup(provider);
   }catch(e){
     if(e && e.code==='auth/popup-closed-by-user') return;
     showAuthError(translateAuthError(e));
@@ -642,9 +658,10 @@ function skipAuth(){
   document.getElementById('authScreen').style.display = 'flex';
 }
 async function doLogout(){
-  if(FIREBASE_ENABLED && currentUser){
-    try{ await firebase.auth().signOut(); }catch(e){}
+  if(FIREBASE_ENABLED && firebaseAuth){
+    try{ await firebaseAuth.signOut(); }catch(e){}
   }
+  currentUser = null;
   location.reload();
 }
 
@@ -2083,8 +2100,8 @@ async function init(){
   if(GOOGLE_DRIVE_ENABLED){
     await initGoogleDrive();
   }
-  if(FIREBASE_ENABLED){
-    firebase.auth().onAuthStateChanged(async (user)=>{
+  if(FIREBASE_ENABLED && firebaseAuth){
+    firebaseAuth.onAuthStateChanged(async (user)=>{
       currentUser = user;
       if(user){
         document.getElementById('authScreen').style.display = 'none';
