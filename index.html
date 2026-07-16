@@ -388,23 +388,16 @@ input,select,textarea{font-family:inherit;}
       <div class="brand-icon" style="background:var(--grad)"><i class="fa-solid fa-graduation-cap"></i></div>
       <div><div class="auth-title">Rombel B Tracker</div><div class="auth-sub">Masuk supaya datamu tersinkron di semua perangkat</div></div>
     </div>
-    <div class="auth-tabs">
-      <div class="auth-tab active" id="authTabLogin" onclick="switchAuthTab('login')">Masuk</div>
-      <div class="auth-tab" id="authTabRegister" onclick="switchAuthTab('register')">Daftar Akun</div>
-    </div>
     <div class="auth-offline-note" style="margin-bottom:14px;">
-      <i class="fa-solid fa-cloud" style="margin-right:6px;"></i>Masuk dengan akun yang sama di perangkat lain untuk membuka data yang sama.
+      <i class="fa-solid fa-cloud" style="margin-right:6px;"></i>Masuk dengan akun Google agar login dan penyimpanan data memakai akun yang sama.
     </div>
     <div class="auth-error" id="authError"></div>
-    <div class="form-field"><label>Email</label><input type="email" id="authEmail" placeholder="nama@email.com"></div>
-    <div class="form-field"><label>Kata Sandi</label><input type="password" id="authPassword" placeholder="Minimal 6 karakter"></div>
-    <button class="btn btn-primary" style="width:100%; justify-content:center;" id="authSubmitBtn" onclick="submitAuth()"><i class="fa-solid fa-right-to-bracket"></i> Masuk</button>
+    <button class="btn btn-primary" style="width:100%; justify-content:center;" id="authSubmitBtn" onclick="loginWithGoogle()"><i class="fa-brands fa-google" style="color:#fff;"></i> Masuk dengan Google</button>
     <div style="display:flex; align-items:center; gap:10px; margin:16px 0; color:var(--text-faint); font-size:11px;">
       <div style="flex:1; height:1px; background:var(--border);"></div>atau<div style="flex:1; height:1px; background:var(--border);"></div>
     </div>
-    <button class="btn btn-outline" style="width:100%; justify-content:center;" onclick="loginWithGoogle()"><i class="fa-brands fa-google" style="color:#EA4335;"></i> Masuk dengan Google</button>
-    <button class="btn btn-outline" style="width:100%; justify-content:center; margin-top:10px;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</button>
-    <div class="auth-skip">Untuk menyimpan data ke perangkat lain, silakan masuk atau daftar akun terlebih dahulu.</div>
+    <button class="btn btn-outline" style="width:100%; justify-content:center;" onclick="signInDrive()"><i class="fa-solid fa-cloud-arrow-up" style="color:#2563EB;"></i> Hubungkan Google Drive</button>
+    <div class="auth-skip">Jika ingin melihat data tanpa login, Anda tetap bisa melanjutkan, tetapi sinkronisasi antar perangkat tidak akan aktif.</div>
   </div>
 </div>
 
@@ -592,70 +585,62 @@ if(FIREBASE_ENABLED){
 
 function switchAuthTab(mode){
   authMode = mode;
-  document.getElementById('authTabLogin').classList.toggle('active', mode==='login');
-  document.getElementById('authTabRegister').classList.toggle('active', mode==='register');
-  document.getElementById('authSubmitBtn').innerHTML = mode==='login'
-    ? '<i class="fa-solid fa-right-to-bracket"></i> Masuk'
-    : '<i class="fa-solid fa-user-plus"></i> Daftar Akun';
-  document.getElementById('authError').style.display = 'none';
+  const loginTab = document.getElementById('authTabLogin');
+  const registerTab = document.getElementById('authTabRegister');
+  if(loginTab) loginTab.classList.toggle('active', mode==='login');
+  if(registerTab) registerTab.classList.toggle('active', mode==='register');
+  const btn = document.getElementById('authSubmitBtn');
+  if(btn){
+    btn.innerHTML = mode==='login'
+      ? '<i class="fa-brands fa-google" style="color:#fff;"></i> Masuk dengan Google'
+      : '<i class="fa-brands fa-google" style="color:#fff;"></i> Masuk dengan Google';
+  }
+  const err = document.getElementById('authError');
+  if(err) err.style.display = 'none';
 }
 function showAuthError(msg){
   const el = document.getElementById('authError');
-  el.textContent = msg; el.style.display = 'block';
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
 }
-async function submitAuth(){
-  const email = document.getElementById('authEmail').value.trim();
-  const password = document.getElementById('authPassword').value;
-  if(!email || !password){ showAuthError('Isi email dan kata sandi terlebih dahulu.'); return; }
-  if(password.length < 6){ showAuthError('Kata sandi minimal 6 karakter.'); return; }
-  if(window.location.protocol === 'file:'){ showAuthError('Buka aplikasi lewat localhost/HTTPS agar login akun bisa berjalan dengan baik.'); return; }
-  const btn = document.getElementById('authSubmitBtn');
-  btn.innerHTML = '<i class="fa-solid fa-spinner uploading-spin"></i> Memproses...';
-  btn.disabled = true;
-  try{
-    if(!firebaseAuth || !firebaseAuth.signInWithEmailAndPassword){
-      throw new Error('Firebase auth belum siap');
-    }
-    if(authMode==='login'){
-      await firebaseAuth.signInWithEmailAndPassword(email, password);
-    } else {
-      await firebaseAuth.createUserWithEmailAndPassword(email, password);
-    }
-  }catch(e){
-    console.error('[submitAuth] login failed', e);
-    showAuthError(translateAuthError(e));
-    switchAuthTab(authMode);
-  } finally {
-    btn.disabled = false;
-    if(document.getElementById('authScreen').style.display !== 'flex'){
-      btn.innerHTML = authMode==='login' ? '<i class="fa-solid fa-right-to-bracket"></i> Masuk' : '<i class="fa-solid fa-user-plus"></i> Daftar Akun';
-    }
-  }
-}
-function translateAuthError(e){
+function translateAuthError(e, provider='Google'){
   const code = (e && (e.code || e.message || '')) || '';
-  if(code.includes('email-already-in-use')) return 'Email ini sudah terdaftar. Coba menu Masuk.';
-  if(code.includes('invalid-email')) return 'Format email tidak valid.';
-  if(code.includes('user-not-found') || code.includes('wrong-password') || code.includes('invalid-credential') || code.includes('invalid-login-credentials')) return 'Email atau kata sandi salah.';
-  if(code.includes('weak-password')) return 'Kata sandi terlalu lemah (minimal 6 karakter).';
   if(code.includes('network-request-failed')) return 'Tidak ada koneksi internet.';
   if(code.includes('popup-blocked')) return 'Popup diblokir browser. Izinkan popup untuk masuk dengan Google.';
   if(code.includes('account-exists-with-different-credential')) return 'Email ini sudah terdaftar dengan cara masuk yang berbeda.';
-  if(code.includes('operation-not-allowed')) return 'Metode email/password belum diaktifkan di Firebase Console.';
+  if(code.includes('operation-not-allowed')) return 'Metode login Google belum diaktifkan di Firebase Console.';
   if(code.includes('too-many-requests')) return 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.';
   if(code.includes('user-disabled')) return 'Akun ini diblokir.';
-  if(code.includes('auth/')) return `Login gagal: ${code.replace('auth/','')}`;
-  if(e && e.message) return `Login gagal: ${e.message}`;
+  if(code.includes('auth/')) return `${provider} login gagal: ${code.replace('auth/','')}`;
+  if(e && e.message) return `${provider} login gagal: ${e.message}`;
   return 'Terjadi kesalahan saat login. Coba lagi.';
 }
 async function loginWithGoogle(){
   if(window.location.protocol === 'file:'){ showAuthError('Buka aplikasi lewat localhost/HTTPS agar login Google bisa berjalan dengan baik.'); return; }
+  const btn = document.getElementById('authSubmitBtn');
+  if(btn){
+    btn.innerHTML = '<i class="fa-solid fa-spinner uploading-spin"></i> Memproses...';
+    btn.disabled = true;
+  }
   try{
+    if(!firebaseAuth || !firebaseAuth.signInWithPopup){
+      throw new Error('Firebase auth belum siap');
+    }
     const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope('email');
+    provider.addScope('profile');
     await firebaseAuth.signInWithPopup(provider);
+    showAuthError('');
   }catch(e){
     if(e && e.code==='auth/popup-closed-by-user') return;
-    showAuthError(translateAuthError(e));
+    console.error('[loginWithGoogle] failed', e);
+    showAuthError(translateAuthError(e, 'Google'));
+  } finally {
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-brands fa-google" style="color:#fff;"></i> Masuk dengan Google';
+    }
   }
 }
 function skipAuth(){
