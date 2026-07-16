@@ -392,6 +392,9 @@ input,select,textarea{font-family:inherit;}
       <div class="auth-tab active" id="authTabLogin" onclick="switchAuthTab('login')">Masuk</div>
       <div class="auth-tab" id="authTabRegister" onclick="switchAuthTab('register')">Daftar Akun</div>
     </div>
+    <div class="auth-offline-note" style="margin-bottom:14px;">
+      <i class="fa-solid fa-cloud" style="margin-right:6px;"></i>Masuk dengan akun yang sama di perangkat lain untuk membuka data yang sama.
+    </div>
     <div class="auth-error" id="authError"></div>
     <div class="form-field"><label>Email</label><input type="email" id="authEmail" placeholder="nama@email.com"></div>
     <div class="form-field"><label>Kata Sandi</label><input type="password" id="authPassword" placeholder="Minimal 6 karakter"></div>
@@ -469,7 +472,16 @@ const FIREBASE_CONFIG = {
   appId: "1:22978229595:web:f7bad1bd81b4f68758967e",
   measurementId: "G-JH2726HSM3"
 };
-const FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith('AIzaSyBTNDnLh0TMLnHavGzwCXhY-z84niYVsuM'));
+const FIREBASE_ENABLED = !!(
+  FIREBASE_CONFIG.apiKey &&
+  FIREBASE_CONFIG.authDomain &&
+  FIREBASE_CONFIG.projectId &&
+  FIREBASE_CONFIG.storageBucket &&
+  FIREBASE_CONFIG.appId &&
+  !FIREBASE_CONFIG.apiKey.includes('GANTI_') &&
+  !FIREBASE_CONFIG.authDomain.includes('GANTI_') &&
+  !FIREBASE_CONFIG.projectId.includes('GANTI_')
+);
 // Jika aplikasi sudah dideploy, pastikan menambahkan origin berikut
 // sebagai "Authorized JavaScript origin" di Google Cloud Console:
 //   https://ppg-beta.vercel.app
@@ -480,7 +492,11 @@ const GOOGLE_DRIVE_CONFIG = {
   discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"],
   scope: "https://www.googleapis.com/auth/drive.file"
 };
-const GOOGLE_DRIVE_ENABLED = !!(GOOGLE_DRIVE_CONFIG.clientId && !GOOGLE_DRIVE_CONFIG.clientId.startsWith('GAPI_'));
+const GOOGLE_DRIVE_ENABLED = !!(
+  GOOGLE_DRIVE_CONFIG.clientId &&
+  !GOOGLE_DRIVE_CONFIG.clientId.includes('GAPI_') &&
+  !GOOGLE_DRIVE_CONFIG.clientId.includes('YOUR_')
+);
 let currentUser = null;
 let authMode = 'login';
 let gapiLoaded = false;
