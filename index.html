@@ -762,6 +762,22 @@ let ui = {view:'dashboard', courseId:null, tab:'checklist', search:'', filter:'a
 let fileContentCache = {}; // itemId -> full dataURL (in-memory cache; source of truth is Storage)
 let cloudSyncWarningShown = false;
 
+function parseStoredPayload(raw, fallback=null){
+  if(!raw) return fallback;
+  try{
+    const parsed = JSON.parse(raw);
+    if(parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, 'payload')){
+      return parsed;
+    }
+  }catch(e){}
+  return {payload: raw, updatedAt: null, updatedBy: null};
+}
+function serializeStoredPayload(payload, meta={}){
+  return JSON.stringify({payload, updatedAt: meta.updatedAt || null, updatedBy: meta.updatedBy || null});
+}
+function buildSyncMeta(){
+  return {updatedAt: Date.now(), updatedBy: currentUser ? currentUser.uid : 'local'};
+}
 function defaultState(){
   const meetingsDone = {}; const kegiatan = {};
   COURSES.forEach(c=>{ kegiatan[c.id] = DEFAULT_KEGIATAN.map((n,i)=>({id:c.id+'-k'+i, name:n, done:false})); });
@@ -795,12 +811,12 @@ function showCloudSyncWarning(err, fallbackLabel){
       : `${fallbackLabel || 'Sinkronisasi cloud gagal.'} Data tetap tersimpan di perangkat ini.`;
   showToast(message, 'fa-triangle-exclamation', 'var(--warning)');
 }
-async function persistCloudDocument(name, payload){
+async function persistCloudDocument(name, payload, meta={}){
   if(!FIREBASE_ENABLED || !currentUser) return false;
   try{
     const ref = cloudDataRef(name);
     if(!ref) throw new Error('Firestore belum siap');
-    await ref.set({payload});
+    await ref.set({payload, ...(meta.updatedAt ? {updatedAt: meta.updatedAt} : {}), ...(meta.updatedBy ? {updatedBy: meta.updatedBy} : {})});
     return true;
   }catch(err){
     console.error(`[persistCloudDocument:${name}]`, err);
@@ -811,37 +827,57 @@ async function persistCloudDocument(name, payload){
 async function loadState(){
   if(FIREBASE_ENABLED && currentUser){
     try{
-      const snap = await cloudDataRef('state').get();
-      if(snap.exists && snap.data().payload) return JSON.parse(snap.data().payload);
+      const ref = cloudDataRef('state');
+      if(!ref) return defaultState();
+      const snap = await ref.get();
+      if(snap.exists && snap.data().payload){
+        const remoteData = snap.data();
+        const remoteMeta = {updatedAt: remoteData.updatedAt || null, updatedBy: remoteData.updatedBy || null};
+        try{
+          const localRaw = await Storage.get('rombelb-state');
+          const localData = parseStoredPayload(localRaw, null);
+          if(localData && localData.payload && remoteMeta.updatedAt && localData.updatedAt && localData.updatedAt > remoteMeta.updatedAt){
+            const localState = JSON.parse(localData.payload);
+            await persistCloudDocument('state', localData.payload, {updatedAt: localData.updatedAt, updatedBy: localData.updatedBy});
+            return localState;
+          }
+        }catch(e){ console.warn('[loadState] local compare failed', e); }
+        return JSON.parse(snap.data().payload);
+      }
     }catch(e){ console.error(e); }
     return defaultState();
   }
-  try{ const v = await Storage.get('rombelb-state'); if(v) return JSON.parse(v); }catch(e){}
+  try{ const v = await Storage.get('rombelb-state'); const stored = parseStoredPayload(v, null); if(stored && stored.payload) return JSON.parse(stored.payload); }catch(e){}
   return defaultState();
 }
 async function saveState(){
   const payload = JSON.stringify(state);
-  try{ await Storage.set('rombelb-state', payload); }catch(e){ console.error(e); showToast('Gagal menyimpan data lokal','fa-triangle-exclamation','var(--danger)'); }
+  const meta = buildSyncMeta();
+  if(state){ state.__meta = meta; }
+  try{ await Storage.set('rombelb-state', serializeStoredPayload(payload, meta)); }catch(e){ console.error(e); showToast('Gagal menyimpan data lokal','fa-triangle-exclamation','var(--danger)'); }
   if(FIREBASE_ENABLED && currentUser){
-    await persistCloudDocument('state', payload);
+    await persistCloudDocument('state', payload, meta);
   }
 }
 async function loadDocs(){
   if(FIREBASE_ENABLED && currentUser){
     try{
-      const snap = await cloudDataRef('docs').get();
+      const ref = cloudDataRef('docs');
+      if(!ref) throw new Error('Firestore belum siap');
+      const snap = await ref.get();
       if(snap.exists && snap.data().payload) return JSON.parse(snap.data().payload);
     }catch(e){ console.error(e); }
     const d={}; COURSES.forEach(c=>d[c.id]=[]); return d;
   }
-  try{ const v = await Storage.get('rombelb-docs'); if(v) return JSON.parse(v); }catch(e){}
+  try{ const v = await Storage.get('rombelb-docs'); const stored = parseStoredPayload(v, null); if(stored && stored.payload) return JSON.parse(stored.payload); }catch(e){}
   const d={}; COURSES.forEach(c=>d[c.id]=[]); return d;
 }
 async function saveDocs(){
   const payload = JSON.stringify(docs);
-  try{ await Storage.set('rombelb-docs', payload); }catch(e){ showToast('Gagal menyimpan data dokumentasi','fa-triangle-exclamation','var(--danger)'); }
+  const meta = buildSyncMeta();
+  try{ await Storage.set('rombelb-docs', serializeStoredPayload(payload, meta)); }catch(e){ showToast('Gagal menyimpan data dokumentasi','fa-triangle-exclamation','var(--danger)'); }
   if(FIREBASE_ENABLED && currentUser){
-    await persistCloudDocument('docs', payload);
+    await persistCloudDocument('docs', payload, meta);
   }
 }
 let docs = null;
@@ -849,22 +885,25 @@ let docs = null;
 async function loadPengumpulan(){
   if(FIREBASE_ENABLED && currentUser){
     try{
-      const snap = await cloudDataRef('pengumpulan').get();
+      const ref = cloudDataRef('pengumpulan');
+      if(!ref) throw new Error('Firestore belum siap');
+      const snap = await ref.get();
       if(snap.exists && snap.data().payload) return JSON.parse(snap.data().payload);
     }catch(e){ console.error(e); }
     return {};
   }
-  try{ const v = await Storage.get('rombelb-pengumpulan'); if(v) return JSON.parse(v); }catch(e){}
+  try{ const v = await Storage.get('rombelb-pengumpulan'); const stored = parseStoredPayload(v, null); if(stored && stored.payload) return JSON.parse(stored.payload); }catch(e){}
   return {};
 }
 async function savePengumpulan(){
   const payload = JSON.stringify(pengumpulan);
+  const meta = buildSyncMeta();
   try{
-    await Storage.set('rombelb-pengumpulan', payload);
+    await Storage.set('rombelb-pengumpulan', serializeStoredPayload(payload, meta));
     if(FIREBASE_ENABLED && !currentUser) showToast('Login untuk menyinkronkan berkas ke perangkat lain. Saat ini hanya tersimpan lokal.','fa-cloud-arrow-up','var(--warning)');
   }catch(e){ showToast('Gagal menyimpan data berkas','fa-triangle-exclamation','var(--danger)'); console.error('[savePengumpulan] local save failed', e); }
   if(FIREBASE_ENABLED && currentUser){
-    await persistCloudDocument('pengumpulan', payload);
+    await persistCloudDocument('pengumpulan', payload, meta);
   }
 }
 let realtimeSyncUnsubscribers = {};
