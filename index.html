@@ -1994,20 +1994,19 @@ function isFirstLoginUser(user){
   return !!(created && lastSignIn && created === lastSignIn);
 }
 function showProfileSetupModal(){
-  const p = state.profile || {};
   const overlay = document.getElementById('modalOverlay');
   overlay.dataset.locked = 'true';
   openModal(`
     <h3>Lengkapi Profil Akun</h3>
     <p style="font-size:12.5px; color:var(--text-dim); margin-bottom:14px; line-height:1.6;">Akun baru Anda sudah siap. Silakan isi data profil terlebih dahulu agar identitas Anda muncul di dashboard dan sinkronisasi lebih rapi.</p>
     <div class="form-grid">
-      <div class="form-field full"><label>Nama Lengkap</label><input id="psNama" value="${p.nama || ''}"></div>
-      <div class="form-field"><label>NPM</label><input id="psNpm" value="${p.npm || ''}"></div>
-      <div class="form-field"><label>Program Studi</label><input id="psProdi" value="${p.prodi || ''}"></div>
-      <div class="form-field"><label>Kelas / Rombel</label><input id="psKelas" value="${p.kelas || ''}"></div>
-      <div class="form-field full"><label>Sekolah Tempat PPL</label><input id="psSekolah" value="${p.sekolah || ''}"></div>
-      <div class="form-field"><label>Guru Pamong</label><input id="psPamong" value="${p.pamong || ''}"></div>
-      <div class="form-field"><label>Dosen Pembimbing Lapangan</label><input id="psDpl" value="${p.dpl || ''}"></div>
+      <div class="form-field full"><label>Nama Lengkap</label><input id="psNama" value=""></div>
+      <div class="form-field"><label>NPM</label><input id="psNpm" value=""></div>
+      <div class="form-field"><label>Program Studi</label><input id="psProdi" value=""></div>
+      <div class="form-field"><label>Kelas / Rombel</label><input id="psKelas" value=""></div>
+      <div class="form-field full"><label>Sekolah Tempat PPL</label><input id="psSekolah" value=""></div>
+      <div class="form-field"><label>Guru Pamong</label><input id="psPamong" value=""></div>
+      <div class="form-field"><label>Dosen Pembimbing Lapangan</label><input id="psDpl" value=""></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="submitProfileSetup()"><i class="fa-solid fa-floppy-disk"></i> Simpan Profil</button>
@@ -2203,7 +2202,8 @@ async function bootApp(){
   pengumpulan = await loadPengumpulan();
   applyTheme();
   render();
-  if(currentUser && isFirstLoginUser(currentUser) && state.profile.profileSetupCompleted !== true){
+  const shouldShowProfileSetup = currentUser && isFirstLoginUser(currentUser) && state.profile.profileSetupCompleted !== true;
+  if(shouldShowProfileSetup){
     setTimeout(()=>{ showProfileSetupModal(); }, 300);
   }
   setTimeout(()=>{ document.getElementById('loader').classList.add('hide'); }, 500);
