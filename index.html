@@ -1092,14 +1092,55 @@ async function removeFileContent(item){
   delete fileContentCache[item.id];
 }
 async function downloadItem(item){
-  if(item.url){ window.open(item.url, '_blank'); return; }
+  if(!item){ return; }
   showToast('Menyiapkan unduhan...','fa-download','var(--primary)');
-  const data = await getFileSrc(item);
-  if(!data){ showToast('Berkas tidak ditemukan','fa-triangle-exclamation','var(--danger)'); return; }
-  const blob = dataURLtoBlob(data);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=item.name||'berkas'; a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),4000);
+
+  try{
+    let source = item.url || null;
+    if(!source){
+      source = await getFileSrc(item);
+    }
+    if(!source){
+      showToast('Berkas tidak ditemukan','fa-triangle-exclamation','var(--danger)');
+      return;
+    }
+
+    let href = source;
+    let cleanupUrl = null;
+
+    if(source.startsWith('data:')){
+      const blob = dataURLtoBlob(source);
+      href = URL.createObjectURL(blob);
+      cleanupUrl = href;
+    } else if(!source.startsWith('blob:') && /^https?:\/\//i.test(source)){
+      try{
+        const response = await fetch(source, {method:'GET'});
+        if(response.ok){
+          const blob = await response.blob();
+          href = URL.createObjectURL(blob);
+          cleanupUrl = href;
+        }
+      } catch(e){
+        console.warn('[downloadItem] failed to fetch remote file, using direct link', e);
+      }
+    }
+
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = item.name || 'berkas';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    if(cleanupUrl){
+      setTimeout(()=>URL.revokeObjectURL(cleanupUrl), 4000);
+    }
+  } catch(e){
+    console.error('[downloadItem] download failed', e);
+    showToast('Gagal mengunduh berkas','fa-triangle-exclamation','var(--danger)');
+  }
 }
 async function previewItem(item){
   showToast('Memuat pratinjau...','fa-spinner uploading-spin','var(--primary)');
