@@ -1016,6 +1016,18 @@ async function saveFileContent(itemId, file){
           const text = await response.text();
           if(response.ok){
             const data = JSON.parse(text || '{}');
+            try{
+              await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(data.id)}/permissions`, {
+                method: 'POST',
+                headers: {
+                  Authorization: 'Bearer ' + driveAccessToken,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ role: 'reader', type: 'anyone' })
+              });
+            } catch(e){
+              console.warn('[saveFileContent] failed to make Drive file shareable', e);
+            }
             const url = `https://drive.google.com/uc?export=download&id=${data.id}`;
             showToast('Berhasil diunggah ke Drive','fa-cloud-check','var(--success)');
             console.log('[saveFileContent] drive upload success', data);
@@ -1096,6 +1108,36 @@ async function downloadItem(item){
   showToast('Menyiapkan unduhan...','fa-download','var(--primary)');
 
   try{
+    if(item.driveId && GOOGLE_DRIVE_ENABLED){
+      try{
+        await ensureDriveReady();
+        if(!driveAccessToken || (driveTokenExpiry && Date.now() > driveTokenExpiry - 60000)){
+          try{ await requestDriveToken(''); }catch(e){ try{ await requestDriveToken('consent'); }catch(e2){} }
+        }
+        if(driveAccessToken){
+          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.driveId)}?alt=media`, {
+            headers: { Authorization: 'Bearer ' + driveAccessToken }
+          });
+          if(response.ok){
+            const blob = await response.blob();
+            const href = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = item.name || 'berkas';
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(()=>URL.revokeObjectURL(href), 4000);
+            return;
+          }
+        }
+      } catch(e){
+        console.warn('[downloadItem] failed to download from Drive API', e);
+      }
+    }
+
     let source = item.url || null;
     if(!source){
       source = await getFileSrc(item);
